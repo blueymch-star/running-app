@@ -3,12 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>快活計畫 - AI 智慧統計 Pro v6.2</title>
+    <title>快活計畫 - AI 智慧統計 Pro v7.0</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-    <!-- AI 引擎 -->
+    <!-- OpenCV 4.7.0 -->
     <script async src="https://docs.opencv.org/4.7.0/opencv.js" type="text/javascript"></script>
-    <script src='https://unpkg.com/tesseract.js@v4.0.1/dist/tesseract.min.js'></script>
     <style>
         [v-cloak] { display: none; }
         .tab-active { color: #2563eb; border-bottom: 3px solid #2563eb; background: #eff6ff; font-weight: 900; }
@@ -16,28 +15,30 @@
         .bar-transition { transition: width 1s cubic-bezier(0.17, 0.67, 0.83, 0.67); }
         .modal-enter { animation: modal-in 0.3s ease-out; }
         @keyframes modal-in { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        #processingCanvas { width: 100%; border-radius: 1rem; }
     </style>
 </head>
 <body class="bg-slate-100 min-h-screen pb-24 font-sans text-slate-900 leading-tight">
-    <div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-white shadow-2xl relative">
+    <div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-white shadow-2xl relative border-x border-slate-200">
         
-        <!-- 頂部標題與選擇 -->
+        <!-- 頂部固定區 -->
         <header class="sticky top-0 z-40 bg-white border-b border-slate-100 shadow-sm">
             <div class="p-4 bg-white">
                 <div class="flex justify-between items-center mb-4">
-                    <h1 class="text-xl font-black text-blue-800 italic tracking-tighter">RUNNING AI PRO 🏃‍♂️</h1>
-                    <button @click="exportCSV" class="text-[10px] bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm">匯出報表</button>
+                    <h1 class="text-xl font-black text-blue-800 italic tracking-tighter">RUNNING AI VISION 👁️</h1>
+                    <button @click="exportCSV" class="text-[10px] bg-emerald-500 text-white px-3 py-1.5 rounded-lg font-bold shadow-sm active:scale-95 transition">匯出報表</button>
                 </div>
                 
                 <div class="flex gap-2">
-                    <select v-model="selectedClass" class="flex-1 p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold outline-none shadow-inner">
+                    <select v-model="selectedClass" class="flex-1 p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-xs font-bold outline-none">
                         <option v-for="className in sortedClassNames" :key="className" :value="className">{{ className }}</option>
                     </select>
                     <input type="date" v-model="today" class="p-2.5 border border-slate-200 rounded-xl text-xs font-bold bg-slate-50 text-slate-600">
                 </div>
             </div>
 
-            <nav class="flex border-t border-slate-100 bg-white text-[11px] font-black text-slate-400 uppercase tracking-tighter">
+            <!-- 分頁導航 -->
+            <nav class="flex border-t border-slate-100 bg-white text-[11px] font-black text-slate-400 uppercase">
                 <button @click="activeTab = 'register'" :class="{'tab-active': activeTab === 'register'}" class="flex-1 py-4">📝 登記</button>
                 <button @click="activeTab = 'aiScan'" :class="{'tab-active': activeTab === 'aiScan'}" class="flex-1 py-4 text-indigo-600">📸 AI 掃描</button>
                 <button @click="activeTab = 'classRanking'" :class="{'tab-active': activeTab === 'classRanking'}" class="flex-1 py-4">🏆 排行</button>
@@ -50,43 +51,53 @@
             <!-- 1. AI 掃描介面 -->
             <div v-show="activeTab === 'aiScan'" class="space-y-4">
                 
-                <!-- 時段選擇按鈕 (您提供的 UI) -->
-                <div class="mb-6">
+                <!-- 時段選擇按鈕 -->
+                <div class="mb-4">
                     <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 px-2 italic">
-                        SELECT SCANNING SESSION (選擇掃描欄位)
+                        SELECT SCANNING SESSION (選擇辨識欄位)
                     </label>
                     <div class="grid grid-cols-2 gap-2">
-                        <button v-for="(label, index) in sessionLabels" 
-                                :key="index"
+                        <button v-for="(label, index) in sessionLabels" :key="index"
                                 @click="scanSessionIndex = index"
-                                :class="scanSessionIndex === index ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'bg-white text-slate-500 border border-slate-200'"
+                                :class="scanSessionIndex === index ? 'bg-indigo-600 text-white shadow-lg scale-105' : 'bg-white text-slate-400 border border-slate-200'"
                                 class="py-3 rounded-xl text-[10px] font-black transition-all active:scale-95">
                             {{ label }}
                         </button>
                     </div>
                 </div>
 
-                <div v-if="!isCvReady" class="bg-amber-50 text-amber-600 p-3 text-[10px] text-center rounded-xl font-bold animate-pulse border border-amber-100">
-                    ⏳ AI 影像辨識模組載入中，請稍候...
+                <div v-if="!isCvReady" class="bg-amber-50 text-amber-600 p-3 text-[10px] text-center rounded-xl font-bold animate-pulse">
+                    ⏳ 影像辨識模組載入中...
                 </div>
 
+                <!-- 拍照按鈕 -->
                 <div class="relative">
                     <input type="file" accept="image/*" capture="environment" @change="handleFileUpload" id="camInput" class="hidden" :disabled="!isCvReady">
                     <label for="camInput" class="block">
                         <div :class="isCvReady ? 'bg-indigo-600 shadow-indigo-100 active:scale-95' : 'bg-slate-300 pointer-events-none'"
-                             class="w-full py-12 rounded-[2.5rem] text-white flex flex-col items-center gap-4 transition-all shadow-xl cursor-pointer">
-                            <span class="text-5xl">📸</span>
+                             class="w-full py-10 rounded-[2.5rem] text-white flex flex-col items-center gap-4 transition-all shadow-xl cursor-pointer">
+                            <span class="text-5xl">📷</span>
                             <div class="text-center">
-                                <p class="font-black text-lg italic uppercase">Scan Worksheet</p>
-                                <p class="text-[10px] opacity-60 font-bold tracking-widest uppercase">Target: {{ sessionLabels[scanSessionIndex] }}</p>
+                                <p class="font-black text-base italic uppercase">Scan Table</p>
+                                <p class="text-[10px] opacity-60 font-bold uppercase">{{ sessionLabels[scanSessionIndex] }}</p>
                             </div>
                         </div>
                     </label>
                 </div>
 
-                <div v-if="isScanning" class="text-center py-10">
-                    <div class="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin inline-block"></div>
-                    <p class="text-indigo-600 font-black text-xs mt-4 uppercase italic">Analyzing Grid Pixels...</p>
+                <!-- 除錯預覽畫布 (由 analyzeLaps 繪製) -->
+                <div v-show="isScanning || scanConfirmResult" class="mt-4 animate-in fade-in duration-500">
+                    <p class="text-[10px] font-bold text-slate-400 mb-2 flex items-center gap-2 uppercase tracking-tighter">
+                        🔍 AI 偵測結果預覽 (綠=偵測到 / 紅=空白)
+                    </p>
+                    <div class="rounded-2xl border-2 border-indigo-500 shadow-xl overflow-hidden bg-slate-900">
+                        <canvas id="processingCanvas"></canvas>
+                    </div>
+                </div>
+
+                <div v-if="isScanning" class="text-center py-6">
+                    <div class="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin inline-block"></div>
+                    <p class="text-indigo-600 font-black text-[10px] mt-2 uppercase italic">AI Processing...</p>
                 </div>
             </div>
 
@@ -94,8 +105,8 @@
             <div v-show="activeTab === 'register'" class="space-y-3">
                 <div class="bg-blue-600 text-white p-5 rounded-3xl mb-4 shadow-xl flex justify-between items-center relative overflow-hidden">
                     <div class="relative z-10">
-                        <p class="text-blue-200 text-[10px] font-black uppercase tracking-widest">{{ sessionLabels[scanSessionIndex] }} 今日累計</p>
-                        <h2 class="text-4xl font-black italic tracking-tighter">{{ classTotalLapsToday }} <span class="text-sm font-normal not-italic opacity-60">Laps</span></h2>
+                        <p class="text-blue-100 text-[10px] font-black uppercase tracking-widest">{{ sessionLabels[scanSessionIndex] }}</p>
+                        <h2 class="text-4xl font-black italic">{{ classTotalLapsToday }} <span class="text-sm font-normal not-italic opacity-60">Laps</span></h2>
                     </div>
                     <div class="relative z-10 flex flex-col items-end gap-2">
                         <select v-model="scanSessionIndex" class="bg-white/20 border border-white/30 rounded-lg p-1 text-[10px] font-bold outline-none italic text-white">
@@ -103,7 +114,6 @@
                         </select>
                         <button @click="resetToday" class="text-[10px] bg-red-500/50 px-3 py-1 rounded-lg font-bold border border-white/20">清空</button>
                     </div>
-                    <div class="absolute -right-4 -bottom-2 text-white/10 text-7xl font-black rotate-12">RUN</div>
                 </div>
 
                 <div v-for="student in currentStudents" :key="student.座號" 
@@ -126,48 +136,53 @@
                 </div>
             </div>
 
-            <!-- 全校總榜進度條 -->
-            <div v-show="activeTab === 'schoolRanking'" class="space-y-6">
-                <h3 class="font-black text-slate-800 text-xl italic px-2 tracking-tighter uppercase">🌍 Global Leaderboard</h3>
-                <div v-for="(item, index) in schoolClassRanking" :key="item.name" class="px-2">
-                    <div class="flex justify-between mb-2 font-black text-xs uppercase tracking-widest">
-                        <span class="text-slate-600">#{{ index + 1 }} {{ item.name }} <small class="text-slate-300 italic font-normal ml-2">AVG: {{ item.avg }}</small></span>
-                        <span class="text-blue-600 font-mono italic">{{ item.total }} <small class="text-slate-300">Laps</small></span>
+            <!-- 全校進度條榜 -->
+            <div v-show="activeTab === 'schoolRanking'" class="space-y-6 px-2">
+                <h3 class="font-black text-slate-800 text-xl italic flex items-center gap-2">🌍 GLOBAL LEADERBOARD</h3>
+                <div v-for="(item, index) in schoolClassRanking" :key="item.name" class="relative">
+                    <div class="flex justify-between mb-2 font-black">
+                        <span class="text-slate-700 text-sm uppercase tracking-tighter">
+                            <span class="text-slate-300 mr-1 italic">#{{ index + 1 }}</span> {{ item.name }}
+                        </span>
+                        <span class="text-blue-600 text-base font-mono italic">{{ item.total }} <small class="text-slate-300">圈</small></span>
                     </div>
-                    <div class="w-full bg-slate-100 h-4 rounded-full overflow-hidden shadow-inner border border-slate-50">
-                        <div class="h-full bg-gradient-to-r from-blue-500 to-indigo-700 bar-transition shadow-sm" 
-                             :style="{ width: (item.total / (maxLaps || 1) * 100) + '%' }"></div>
+                    <div class="w-full bg-slate-100 h-4 rounded-full overflow-hidden shadow-inner border border-slate-50 p-[1px]">
+                        <div class="h-full bg-gradient-to-r from-blue-500 via-blue-600 to-indigo-700 bar-transition rounded-full shadow-sm" 
+                             :style="{ width: (item.total / (maxLaps || 1) * 100) + '%' }">
+                            <div class="w-full h-full bg-white/20 animate-pulse"></div>
+                        </div>
                     </div>
                 </div>
             </div>
+
         </main>
 
-        <!-- 辨識結果核對 Modal -->
+        <!-- 辨識結果核對視窗 (Modal) -->
         <div v-if="scanConfirmResult" class="fixed inset-0 bg-slate-900/95 backdrop-blur-md flex items-end sm:items-center justify-center p-0 sm:p-4 z-[100]">
             <div class="bg-white rounded-t-[2.5rem] sm:rounded-3xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl modal-enter overflow-hidden">
                 <div class="p-6 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white z-10">
                     <div>
-                        <h3 class="text-xl font-black text-slate-800 italic uppercase">Verify Results</h3>
-                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1">
-                             時段：{{ sessionLabels[scanSessionIndex] }} · 點擊圈數修正
+                        <h3 class="text-xl font-black text-slate-800 tracking-tighter italic uppercase">AI Verification</h3>
+                        <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-1 italic">
+                             時段：{{ sessionLabels[scanSessionIndex] }} · 點擊圈數手動修正
                         </p>
                     </div>
-                    <button @click="scanConfirmResult = null" class="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-400 font-bold italic">✕</button>
+                    <button @click="scanConfirmResult = null" class="w-10 h-10 flex items-center justify-center bg-slate-50 rounded-full text-slate-400 font-bold">✕</button>
                 </div>
 
-                <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 no-scrollbar">
+                <div class="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50 no-scrollbar pb-10">
                     <div v-for="(laps, index) in scanConfirmResult" :key="index" 
                          class="bg-white p-3 rounded-2xl shadow-sm border border-slate-100 flex items-center gap-3">
-                        <span class="w-6 h-6 bg-slate-50 rounded-lg flex items-center justify-center text-[9px] font-black text-slate-300 font-mono italic">
+                        <span class="w-6 h-6 bg-slate-100 rounded-lg flex items-center justify-center text-[9px] font-black text-slate-300 font-mono italic">
                             {{ currentStudents[index]?.座號 }}
                         </span>
-                        <span class="font-black text-slate-700 flex-1 truncate text-xs uppercase">
+                        <span class="font-black text-slate-700 flex-1 truncate text-xs">
                             {{ currentStudents[index]?.姓名 }}
                         </span>
                         <div class="flex gap-1 overflow-x-auto no-scrollbar pb-1">
                             <button v-for="n in [0, 1, 2, 3, 4, 5, 6, 7, 8]" 
                                     @click="scanConfirmResult[index] = n"
-                                    :class="laps === n ? 'bg-blue-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-400 font-bold'"
+                                    :class="laps === n ? 'bg-blue-600 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-400'"
                                     class="min-w-[1.8rem] h-7 rounded-md text-[9px] font-black transition-all">
                                 {{ n === 0 ? 'X' : n }}
                             </button>
@@ -196,16 +211,16 @@
                 const isCvReady = ref(false);
                 const isScanning = ref(false);
                 const scanConfirmResult = ref(null);
-
-                // --- 您的時段控制變數 ---
+                
+                // 時段變數
                 const scanSessionIndex = ref(0);
                 const sessionLabels = ["第一週(二)", "第一週(五)", "第二週(二)", "第二週(五)"];
 
-                // 名單資料 (保持您提供的 15 班完整名單)
+                // 名單資料 (15 個班級)
                 const allData = ref({
                     "五年丁班": [{"座號":1,"姓名":"陳昱年"},{"座號":2,"姓名":"李國詣"},{"座號":3,"姓名":"柯旻佑"},{"座號":4,"姓名":"陳加舜"},{"座號":5,"姓名":"鄭彥搏"},{"座號":6,"姓名":"駱勤春"},{"座號":7,"姓名":"陳?翔"},{"座號":8,"姓名":"董耘銨"},{"座號":9,"姓名":"黃楷宸"},{"座號":10,"姓名":"張凱勛"},{"座號":11,"姓名":"莊凱迪"},{"座號":12,"姓名":"楊宏隆"},{"座號":13,"姓名":"郭宸廷"},{"座號":14,"姓名":"陳宥均"},{"座號":15,"姓名":"鄭棠云"},{"座號":16,"姓名":"張銨芸"},{"座號":17,"姓名":"陳雨晴"},{"座號":18,"姓名":"柯雨婕"},{"座號":19,"姓名":"康芷嫣"},{"座號":20,"姓名":"甘芷瑜"},{"座號":21,"姓名":"何欣蓉"},{"座號":22,"姓名":"楊惟馨"},{"座號":23,"姓名":"吳芮蓁"},{"座號":24,"姓名":"陳品竹"},{"座號":25,"姓名":"劉品妍"}],
                     "五年丙班": [{"座號":1,"姓名":"陳柏叡"},{"座號":2,"姓名":"吳秦鋒"},{"座號":3,"姓名":"邱宥勳"},{"座號":4,"姓名":"柯奕廷"},{"座號":5,"姓名":"陳奕安"},{"座號":6,"姓名":"施允珩"},{"座號":7,"姓名":"吳晟佑"},{"座號":8,"姓名":"陳耘秧"},{"座號":9,"姓名":"劉彥楷"},{"座號":10,"姓名":"王珮瑄"},{"座號":11,"姓名":"柯凱紘"},{"座號":12,"姓名":"林昱齊"},{"座號":13,"姓名":"?禹然"},{"座號":14,"姓名":"張芷妤"},{"座號":15,"姓名":"楊惟歆"},{"座號":16,"姓名":"陳柔安"},{"座號":17,"姓名":"康凌唯"},{"座號":18,"姓名":"張莘糖"},{"座號":19,"姓名":"萬芮羽"},{"座號":20,"姓名":"呂祐欣"},{"座號":21,"姓名":"顏羽萱"},{"座號":22,"姓名":"張品喬"},{"座號":23,"姓名":"張羽晴"},{"座號":24,"姓名":"韓庭逸"}],
-                    "五年乙班": [{"座號":1,"姓名":"楊誠安"},{"座號":2,"姓名":"江柏彥"},{"座號":3,"姓名":"施宥安"},{"座號":4,"姓名":"汪碩澄"},{"座號":5,"姓名":"蔡宗祐"},{"座號":6,"姓名":"陳宥勳"},{"座號":7,"姓名":"吳承軒"},{"座號":8,"姓名":"韓宥能"},{"座號":9,"姓名":"林鉑鎬"},{"座號":10,"姓名":"陳暘皓"},{"座號":11,"姓名":"吳芠??"},{"座號":12,"姓名":"杜修語"},{"座號":13,"姓名":"陳廷祐"},{"座號":14,"姓名":"陳柏丞"},{"座號":15,"姓名":"洪莞喻"},{"座號":16,"姓名":"王筱雯"},{"座號":17,"姓名":"楊喬羽"},{"座號":18,"姓名":"孫妤婕"},{"座號":19,"姓名":"陳亭嫣"},{"座號":20,"姓名":"鍾瑀芯"},{"座號":21,"姓名":"吳芠稹"},{"座號":22,"姓名":"陳品如"},{"座號":23,"姓名":"簡佩?"},{"座號":24,"姓名":"銀行貝瑄"},{"座號":25,"姓名":"林芷琦"}],
+                    "五年乙班": [{"座號":1,"姓名":"楊誠安"},{"座號":2,"姓名":"江柏彥"},{"座號":3,"姓名":"施宥安"},{"座號":4,"姓名":"汪碩澄"},{"座號":5,"姓名":"蔡宗祐"},{"座號":6,"姓名":"陳宥勳"},{"座號":7,"姓名":"吳承軒"},{"座號":8,"姓名":"韓宥能"},{"座號":9,"姓名":"林鉑鎬"},{"座號":10,"姓名":"陳暘皓"},{"座號":11,"姓名":"吳芠??"},{"座號":12,"姓名":"杜修語"},{"座號":13,"姓名":"陳廷祐"},{"座號":14,"姓名":"陳柏丞"},{"座號":15,"姓名":"洪莞喻"},{"座號":16,"姓名":"銀行筱雯"},{"座號":17,"姓名":"楊喬羽"},{"座號":18,"姓名":"孫妤婕"},{"座號":19,"姓名":"陳亭嫣"},{"座號":20,"姓名":"鍾瑀芯"},{"座號":21,"姓名":"吳芠稹"},{"座號":22,"姓名":"陳品如"},{"座號":23,"姓名":"簡佩?"},{"座號":24,"姓名":"銀行貝瑄"},{"座號":25,"姓名":"林芷琦"}],
                     "五年戊班": [{"座號":1,"姓名":"林晉玄"},{"座號":2,"姓名":"林煜宸"},{"座號":3,"姓名":"陳宥綸"},{"座號":4,"姓名":"陳立侖"},{"座號":5,"姓名":"楊定翰"},{"座號":6,"姓名":"翟建智"},{"座號":7,"姓名":"詹元廷"},{"座號":8,"姓名":"林恩左"},{"座號":9,"姓名":"呂松原"},{"座號":10,"姓名":"張凱傑"},{"座號":11,"姓名":"林靖穎"},{"座號":12,"姓名":"林延豫"},{"座號":13,"姓名":"謝沛玹"},{"座號":14,"姓名":"洪佩琳"},{"座號":15,"姓名":"何家儀"},{"座號":16,"姓名":"吳昕芸"},{"座號":17,"姓名":"方予柔"},{"座號":18,"姓名":"洪元御"},{"座號":19,"姓名":"周言芮"},{"座號":20,"姓名":"吳晨瑄"},{"座號":21,"姓名":"張簡宇芩"},{"座號":22,"姓名":"翁筠茹"},{"座號":23,"姓名":"林鈺諳"},{"座號":24,"姓名":"方楀喬"}],
                     "五年甲班": [{"座號":1,"姓名":"杜哲安"},{"座號":2,"姓名":"張閩祐"},{"座號":3,"姓名":"楊昕翰"},{"座號":4,"姓名":"魏立宸"},{"座號":5,"姓名":"林子袺"},{"座號":6,"姓名":"陳仲宥"},{"座號":7,"姓名":"李昱叡"},{"座號":8,"姓名":"伍科融"},{"座號":9,"姓名":"李憫樂"},{"座號":10,"姓名":"歐安倫"},{"座號":11,"姓名":"施貿淞"},{"座號":12,"姓名":"彭柏霖"},{"座號":13,"姓名":"楊亞倫"},{"座號":14,"姓名":"胡立杭"},{"座號":15,"姓名":"陳昕妍"},{"座號":16,"姓名":"林筠珊"},{"座號":17,"姓名":"沈思妤"},{"座號":18,"姓名":"吳苡菲"},{"座號":19,"姓名":"張語倪"},{"座號":20,"姓名":"施佩妘"},{"座號":21,"姓名":"楊宜蓁"},{"座號":22,"姓名":"呂昕怡"},{"座號":23,"姓名":"陳欣昀"}],
                     "六年丁班": [{"座號":1,"姓名":"張立果"},{"座號":2,"姓名":"方翊穎"},{"座號":3,"姓名":"王宥昇"},{"座號":4,"姓名":"陳柏叡"},{"座號":5,"姓名":"王莛硯"},{"座號":6,"姓名":"陳緯峰"},{"座號":7,"姓名":"陳雋晏"},{"座號":8,"姓名":"林冠瑜"},{"座號":9,"姓名":"張淮誠"},{"座號":10,"姓名":"黃宇威"},{"座號":11,"姓名":"高芷柔"},{"座號":12,"姓名":"林沛霓"},{"座號":13,"姓名":"林容萱"},{"座號":14,"姓名":"林柔均"},{"座號":15,"姓名":"王宥昕"},{"座號":16,"姓名":"王翊恩"},{"座號":17,"姓名":"倪嬿棠"},{"座號":18,"姓名":"高嘉茹"},{"座號":19,"姓名":"呂沛芝"},{"座號":20,"姓名":"林珈榆"},{"座號":21,"姓名":"蔡郡瑤"},{"座號":22,"姓名":"林思妤"},{"座號":23,"姓名":"許芷翎"}],
@@ -216,7 +231,7 @@
                     "四年丁班": [{"座號":1,"姓名":"林軒詣"},{"座號":2,"姓名":"江昆霖"},{"座號":3,"姓名":"林宇浩"},{"座號":4,"姓名":"張少陽"},{"座號":5,"姓名":"潘仕強"},{"座號":6,"姓名":"彭祥宇"},{"座號":7,"姓名":"王楀硯"},{"座號":8,"姓名":"陳品安"},{"座號":9,"姓名":"陳芊羽"},{"座號":10,"姓名":"劉茉禾"},{"座號":11,"姓名":"劉?恬"},{"座號":12,"姓名":"蘇珈薰"},{"座號":13,"姓名":"謝靜恩"},{"座號":14,"姓名":"蔡妤臻"},{"座號":15,"姓名":"林妤昕"},{"座號":16,"姓名":"蘇沛沄"},{"座號":17,"姓名":"張芯僑"},{"座號":18,"姓名":"林芠歆"},{"座號":19,"姓名":"邱怡捷"},{"座號":20,"姓名":"齊祤棠"},{"座號":21,"姓名":"林辰安"},{"座號":22,"姓名":"蔡祐慈"}],
                     "四年丙班": [{"座號":1,"姓名":"張宇杰"},{"座號":2,"姓名":"彭沅柏"},{"座號":3,"姓名":"張閎睿"},{"座號":4,"姓名":"余弘毅"},{"座號":5,"姓名":"劉宇恩"},{"座號":6,"姓名":"陳祤承"},{"座號":7,"姓名":"許承楷"},{"座號":8,"姓名":"蘇恩旭"},{"座號":9,"姓名":"張心姮"},{"座號":10,"姓名":"巫伊晴"},{"座號":11,"姓名":"李秉芸"},{"座號":12,"姓名":"蔡昀芯"},{"座號":13,"姓名":"吳欣語"},{"座號":14,"姓名":"黃婷暄"},{"座號":15,"姓名":"林芷歆"},{"座號":16,"姓名":"張云瑄"},{"座號":17,"姓名":"張礽蕙"},{"座號":18,"姓名":"吳芷媃"},{"座號":19,"姓名":"吳艾恩"},{"座號":20,"姓名":"黃婉媃"},{"座號":23,"姓名":"羅琦蓁"},{"座號":24,"姓名":"董瑋恩"}],
                     "四年乙班": [{"座號":1,"姓名":"張博凱"},{"座號":2,"姓名":"徐晟瑋"},{"座號":3,"姓名":"銀行博瑞"},{"座號":4,"姓名":"葉秉宥"},{"座號":5,"姓名":"張暐釩"},{"座號":6,"姓名":"王裕碩"},{"座號":7,"姓名":"高伯昇"},{"座號":8,"姓名":"李秉榤"},{"座號":9,"姓名":"陳芊如"},{"座號":10,"姓名":"蔡珮均"},{"座號":11,"姓名":"陳芃筠"},{"座號":12,"姓名":"賴欣悅"},{"座號":13,"姓名":"張巧霓"},{"座號":14,"姓名":"蘇巧臻"},{"座號":15,"姓名":"陳?諠"},{"座號":16,"姓名":"銀行英"},{"座號":17,"姓名":"楊詠琳"},{"座號":18,"姓名":"徐璟萱"},{"座號":19,"姓名":"朱禹芊"},{"座號":20,"姓名":"柯喬予"},{"座號":21,"姓名":"孫妤芯"}],
-                    "四年戊班": [{"座號":1,"姓名":"許文豪"},{"座號":2,"姓名":"朱奕諳"},{"座號":3,"姓名":"張宸宇"},{"座號":4,"姓名":"林辰熙"},{"座號":5,"姓名":"江秉恩"},{"座號":6,"姓名":"蔡易宸"},{"座號":7,"姓名":"江育臣"},{"座號":8,"姓名":"銀行韋辰"},{"座號":9,"姓名":"柯財安"},{"座號":10,"姓名":"張綺真"},{"座號":11,"姓名":"高梓茜"},{"座號":12,"姓名":"銀行曼芸"},{"座號":13,"姓名":"萬晨妤"},{"座號":14,"姓名":"王巧楹"},{"座號":15,"姓名":"蔡晨歆"},{"座號":16,"姓名":"詹語佳"},{"座號":17,"姓名":"王品懿"},{"座號":18,"姓名":"林宥瑾"},{"座號":19,"姓名":"簡苡芯"},{"座號":20,"姓名":"劉庭昀"},{"座號":21,"姓名":"宋玉玲"}],
+                    "四年戊班": [{"座號":1,"姓名":"許文豪"},{"座號":2,"姓名":"朱奕諳"},{"座號":3,"姓名":"張宸宇"},{"座號":4,"姓名":"林辰熙"},{"座號":5,"姓名":"江秉恩"},{"座號":6,"姓名":"蔡易宸"},{"座號":7,"姓名":"江育臣"},{"座號":8,"姓名":"銀行韋辰"},{"座號":9,"姓名":"柯財安"},{"座號":10,"姓名":"張綺真"},{"座號":11,"姓名":"高梓茜"},{"座號":12,"姓名":"銀行曼芸"},{"座號":13,"姓名":"萬晨妤"},{"座號":14,"姓名":"王巧楹"},{"座號":15,"姓名":"蔡晨歆"},{"座號":16,"姓名":"詹語佳"},{"座號":17,"姓名":"王品懿"},{"座號":18,"姓名":"林宥瑾"},{"座號":19,"姓名":"銀行苡芯"},{"座號":20,"姓名":"劉庭昀"},{"座號":21,"姓名":"宋玉玲"}],
                     "四年甲班": [{"座號":1,"姓名":"蔡沐辰"},{"座號":2,"姓名":"林昱宏"},{"座號":3,"姓名":"許書禕"},{"座號":4,"姓名":"郭惟育"},{"座號":5,"姓名":"呂謹安"},{"座號":6,"姓名":"鄭翔亦"},{"座號":7,"姓名":"康育睿"},{"座號":8,"姓名":"吳雍彰"},{"座號":9,"姓名":"銀行劭昆"},{"座號":10,"姓名":"蔡昀臻"},{"座號":11,"姓名":"傅巧昕"},{"座號":12,"姓名":"李尚妍"},{"座號":13,"姓名":"銀行孜紜"},{"座號":14,"姓名":"林奕霏"},{"座號":15,"姓名":"銀行幼芯"},{"座號":16,"姓名":"李沅霓"},{"座號":17,"姓名":"蔡昕穎"},{"座號":18,"姓名":"林語彤"},{"座號":19,"姓名":"林妤蓁"},{"座號":20,"姓名":"張芷柔"},{"座號":21,"姓名":"王以婷"}]
                 });
 
@@ -225,10 +240,10 @@
                         if (window.cv && window.cv.Mat) {
                             isCvReady.value = true;
                             clearInterval(timer);
-                            console.log("OpenCV v4.7.0 Ready");
+                            console.log("OpenCV Ready");
                         }
                     }, 500);
-                    const saved = localStorage.getItem('happy_run_v6_final');
+                    const saved = localStorage.getItem('happy_run_v7_final');
                     if (saved) dailyRecords.value = JSON.parse(saved);
                 });
 
@@ -256,18 +271,16 @@
 
                 const classTotalLapsToday = computed(() => currentStudents.value.reduce((sum, s) => sum + getTodayLaps(selectedClass.value, s.姓名), 0));
 
-                // --- 您提供的分析邏輯整合 ---
+                // --- AI 辨識分析 (整合您提供的視覺化代碼) ---
                 const analyzeLaps = (warped) => {
                     const ROWS = 24, COLS = 8;
+                    let debugMat = warped.clone();
                     let gray = new cv.Mat();
                     cv.cvtColor(warped, gray, cv.COLOR_RGBA2GRAY, 0);
                     cv.adaptiveThreshold(gray, gray, 255, cv.ADAPTIVE_THRESH_GAUSSIAN_C, cv.THRESH_BINARY_INV, 11, 2);
 
                     const nameWidthRatio = 0.35; 
-                    const gridAreaWidthRatio = 0.65; 
-                    const sessionWidth = (warped.cols * gridAreaWidthRatio) / 4;
-                    
-                    // 根據 scanSessionIndex.value 決定 X 起點
+                    const sessionWidth = (warped.cols * 0.65) / 4;
                     const gridStartX = (warped.cols * nameWidthRatio) + (scanSessionIndex.value * sessionWidth);
                     const gridStartY = warped.rows * 0.12;
                     const cellW = (sessionWidth - 10) / COLS;
@@ -277,20 +290,28 @@
                     for (let i = 0; i < ROWS; i++) {
                         let lastLap = 0;
                         for (let j = 0; j < COLS; j++) {
-                            let rect = new cv.Rect(
-                                Math.floor(gridStartX + j*cellW + 2), 
-                                Math.floor(gridStartY + i*cellH + 2), 
-                                Math.floor(cellW - 4), 
-                                Math.floor(cellH - 4)
-                            );
+                            let x = Math.floor(gridStartX + (j * cellW) + 2);
+                            let y = Math.floor(gridStartY + (i * cellH) + 2);
+                            let w = Math.floor(cellW - 4);
+                            let h = Math.floor(cellH - 4);
+
+                            let rect = new cv.Rect(x, y, w, h);
                             let cell = gray.roi(rect);
                             let density = (cv.countNonZero(cell) / (rect.width * rect.height)) * 100;
-                            if (density > 12) lastLap = j + 1;
+                            
+                            let isMarked = density > 12; // 靈敏度門檻
+                            if (isMarked) lastLap = j + 1;
+
+                            // 繪製視覺化預覽：綠色=偵測到，紅色=空白
+                            let color = isMarked ? new cv.Scalar(0, 255, 0, 255) : new cv.Scalar(255, 0, 0, 255);
+                            cv.rectangle(debugMat, new cv.Point(x, y), new cv.Point(x + w, y + h), color, 2);
+
                             cell.delete();
                         }
                         results.push(lastLap);
                     }
-                    gray.delete();
+                    cv.imshow('processingCanvas', debugMat);
+                    gray.delete(); debugMat.delete();
                     return results;
                 };
 
@@ -305,11 +326,11 @@
                         img.src = event.target.result;
                         img.onload = () => {
                             let src = cv.imread(img);
-                            // 拉直圖片為 800x1000
                             let warped = new cv.Mat();
+                            // 標準化大小方便計算與預覽
                             cv.resize(src, warped, new cv.Size(800, 1000));
                             
-                            // 執行分析
+                            // 執行辨識並顯示紅綠框
                             scanConfirmResult.value = analyzeLaps(warped);
                             
                             isScanning.value = false;
@@ -335,7 +356,7 @@
                     scanConfirmResult.value = null;
                 };
 
-                const save = () => localStorage.setItem('happy_run_v6_final', JSON.stringify(dailyRecords.value));
+                const save = () => localStorage.setItem('happy_run_v7_final', JSON.stringify(dailyRecords.value));
                 const resetToday = () => { if(confirm("確定清空目前時段紀錄？")) { currentStudents.value.forEach(s => delete dailyRecords.value[today.value][getUKey(selectedClass.value, s.姓名, scanSessionIndex.value)]); save(); } };
 
                 const schoolClassRanking = computed(() => {
@@ -359,7 +380,7 @@
                     });
                     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                     const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob); a.download = `全校跑走數據.csv`; a.click();
+                    a.href = URL.createObjectURL(blob); a.download = `全校跑走報表_v7.csv`; a.click();
                 };
 
                 return { 
