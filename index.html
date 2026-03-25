@@ -73,7 +73,7 @@
                 </div>
 
                 <div class="relative">
-                    <input type="file" accept="image/*" :capture="inputMode === 'photo' ? 'environment' : false" @change="handleFileUpload" id="camInput" class="hidden" :disabled="!isCvReady || isScanning">
+                    <input type="file" accept="image/*" @change="handleFileUpload" id="camInput" class="hidden" :disabled="!isCvReady || isScanning">
                     <label for="camInput" class="block">
                         <div :class="[isCvReady ? (inputMode === 'photo' ? 'bg-blue-600 border-blue-800' : 'bg-emerald-600 border-emerald-800') : 'bg-slate-300 border-slate-400']"
                              class="w-full py-12 rounded-[2.5rem] text-white flex flex-col items-center gap-4 transition-all shadow-xl cursor-pointer border-b-8 active:scale-95">
